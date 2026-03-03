@@ -70,7 +70,7 @@ class InvoiceData:
         self.invoice_number = f"INV-{date_str}-{unique_id}"
         return self.invoice_number
 
-# Store user data (in production, use a database)
+# Store user data
 user_data = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -462,11 +462,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     """Main function to run the bot"""
-    # Get token from environment variable
-    TOKEN = os.environ.get('8675320434:AAHwgGm-meyMwaSWM52u9Atzrqt48BIhxJ8')
-    if not TOKEN:
-        logger.error("No BOT_TOKEN found in environment variables!")
-        sys.exit(1)
+    # YOUR TELEGRAM BOT TOKEN - Replace with your actual token
+    TOKEN = "8675320434:AAHwgGm-meyMwaSWM52u9Atzrqt48BIhxJ8"  # <--- PUT YOUR TOKEN HERE
     
     try:
         # Create application
