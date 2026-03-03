@@ -9,7 +9,7 @@ from telegram.ext import (
     filters, 
     ContextTypes, 
     ConversationHandler,
-    CallbackQueryHandler  # This was missing!
+    CallbackQueryHandler
 )
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -19,6 +19,7 @@ from reportlab.lib.units import inch
 from reportlab.lib.enums import TA_CENTER
 import uuid
 import tempfile
+import sys
 
 # Enable logging
 logging.basicConfig(
@@ -461,34 +462,42 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     """Main function to run the bot"""
-    # Replace with your bot token from BotFather
-    TOKEN = "8675320434:AAHwgGm-meyMwaSWM52u9Atzrqt48BIhxJ8"  # <-- PUT YOUR TOKEN HERE
+    # Get token from environment variable
+    TOKEN = os.environ.get('8675320434:AAHwgGm-meyMwaSWM52u9Atzrqt48BIhxJ8')
+    if not TOKEN:
+        logger.error("No BOT_TOKEN found in environment variables!")
+        sys.exit(1)
     
-    # Create application
-    application = Application.builder().token(TOKEN).build()
-    
-    # Create conversation handler
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
-        states={
-            CLIENT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, client_name_handler)],
-            SERVICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, service_handler)],
-            PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, price_handler)],
-            QUANTITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, quantity_handler)],
-            ADD_MORE: [CallbackQueryHandler(add_more_handler, pattern="^(add_more|generate)$")],
-            PAYMENT_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, payment_date_handler)],
-            PAYMENT_METHOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, payment_method_handler)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel)],
-    )
-    
-    application.add_handler(conv_handler)
-    application.add_handler(CommandHandler('help', help_command))
-    application.add_handler(CallbackQueryHandler(new_invoice_callback, pattern="^new_invoice$"))
-    
-    # Start the bot
-    print("🤖 Bot is running... Press Ctrl+C to stop")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    try:
+        # Create application
+        application = Application.builder().token(TOKEN).build()
+        
+        # Create conversation handler
+        conv_handler = ConversationHandler(
+            entry_points=[CommandHandler('start', start)],
+            states={
+                CLIENT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, client_name_handler)],
+                SERVICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, service_handler)],
+                PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, price_handler)],
+                QUANTITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, quantity_handler)],
+                ADD_MORE: [CallbackQueryHandler(add_more_handler, pattern="^(add_more|generate)$")],
+                PAYMENT_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, payment_date_handler)],
+                PAYMENT_METHOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, payment_method_handler)],
+            },
+            fallbacks=[CommandHandler('cancel', cancel)],
+        )
+        
+        application.add_handler(conv_handler)
+        application.add_handler(CommandHandler('help', help_command))
+        application.add_handler(CallbackQueryHandler(new_invoice_callback, pattern="^new_invoice$"))
+        
+        # Start the bot
+        logger.info("🤖 Bot is starting...")
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+        
+    except Exception as e:
+        logger.error(f"Error starting bot: {e}")
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()
