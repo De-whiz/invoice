@@ -2,7 +2,7 @@ import os
 import logging
 import asyncio
 from datetime import datetime
-from aiohttp import web  # Add this to requirements.txt
+from aiohttp import web
 import aiohttp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -76,17 +76,37 @@ class InvoiceData:
 # Store user data (in production, use a database)
 user_data = {}
 
-# HTTP Server for health checks
+# Global application instance for webhook handler
+application = None
+
+# HTTP Server handlers
 async def handle_health(request):
     return web.Response(text="healthy")
 
 async def handle_root(request):
     return web.Response(text="Tachaelhub Invoice Bot is running!")
 
+async def handle_webhook(request):
+    """Handle incoming Telegram webhook updates"""
+    global application
+    try:
+        # Parse the incoming update
+        update_data = await request.json()
+        update = Update.de_json(update_data, application.bot)
+        
+        # Process the update
+        await application.process_update(update)
+        
+        return web.Response(status=200)
+    except Exception as e:
+        logger.error(f"Error processing webhook: {e}")
+        return web.Response(status=500)
+
 async def start_http_server():
     app = web.Application()
     app.router.add_get('/', handle_root)
     app.router.add_get('/health', handle_health)
+    app.router.add_post('/webhook', handle_webhook)
     
     PORT = int(os.environ.get('PORT', 10000))
     runner = web.AppRunner(app)
@@ -95,7 +115,7 @@ async def start_http_server():
     await site.start()
     logger.info(f"HTTP server started on port {PORT}")
 
-# Telegram handlers (same as before)
+# Telegram handlers (keep all your existing handlers exactly as they are)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start command handler"""
     user_id = update.effective_user.id
@@ -485,6 +505,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def main():
     """Main function to run the bot with webhook"""
+    global application
+    
     # Get token from environment variable
     TOKEN = os.environ.get('BOT_TOKEN', "YOUR_BOT_TOKEN_HERE")
     
@@ -493,7 +515,7 @@ async def main():
     if not RENDER_URL:
         logger.warning("RENDER_EXTERNAL_URL not set, webhook may not work")
     
-    # Start HTTP server for health checks
+    # Start HTTP server for health checks and webhooks
     await start_http_server()
     
     # Create application
@@ -518,18 +540,19 @@ async def main():
     application.add_handler(CommandHandler('help', help_command))
     application.add_handler(CallbackQueryHandler(new_invoice_callback, pattern="^new_invoice$"))
     
+    # Initialize and start the application
+    await application.initialize()
+    await application.start()
+    
     # Set webhook if URL is available
     if RENDER_URL:
         webhook_url = f"{RENDER_URL}/webhook"
         await application.bot.set_webhook(url=webhook_url)
         logger.info(f"Webhook set to {webhook_url}")
         
-        # Start webhook mode (no polling)
-        await application.initialize()
-        await application.start()
-        
         # Keep the application running
         try:
+            # Keep the process alive
             while True:
                 await asyncio.sleep(3600)  # Sleep for an hour
         except KeyboardInterrupt:
