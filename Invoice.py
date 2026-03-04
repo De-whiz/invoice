@@ -1,6 +1,9 @@
 import os
 import logging
+import asyncio
 from datetime import datetime
+from aiohttp import web  # Add this to requirements.txt
+import aiohttp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, 
@@ -70,9 +73,29 @@ class InvoiceData:
         self.invoice_number = f"INV-{date_str}-{unique_id}"
         return self.invoice_number
 
-# Store user data
+# Store user data (in production, use a database)
 user_data = {}
 
+# HTTP Server for health checks
+async def handle_health(request):
+    return web.Response(text="healthy")
+
+async def handle_root(request):
+    return web.Response(text="Tachaelhub Invoice Bot is running!")
+
+async def start_http_server():
+    app = web.Application()
+    app.router.add_get('/', handle_root)
+    app.router.add_get('/health', handle_health)
+    
+    PORT = int(os.environ.get('PORT', 10000))
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', PORT)
+    await site.start()
+    logger.info(f"HTTP server started on port {PORT}")
+
+# Telegram handlers (same as before)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start command handler"""
     user_id = update.effective_user.id
@@ -282,7 +305,7 @@ async def new_invoice_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     return CLIENT_NAME
 
 async def generate_invoice_pdf(invoice_data):
-    """Generate PDF invoice"""
+    """Generate PDF invoice (unchanged)"""
     # Create temp file
     fd, path = tempfile.mkstemp(suffix='.pdf')
     os.close(fd)
@@ -460,41 +483,61 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
-def main():
-    """Main function to run the bot"""
-    # YOUR TELEGRAM BOT TOKEN - Replace with your actual token
-    TOKEN = "8675320434:AAHwgGm-meyMwaSWM52u9Atzrqt48BIhxJ8"  # <--- PUT YOUR TOKEN HERE
+async def main():
+    """Main function to run the bot with webhook"""
+    # Get token from environment variable
+    TOKEN = os.environ.get('BOT_TOKEN', "YOUR_BOT_TOKEN_HERE")
     
-    try:
-        # Create application
-        application = Application.builder().token(TOKEN).build()
+    # Get Render URL
+    RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL')
+    if not RENDER_URL:
+        logger.warning("RENDER_EXTERNAL_URL not set, webhook may not work")
+    
+    # Start HTTP server for health checks
+    await start_http_server()
+    
+    # Create application
+    application = Application.builder().token(TOKEN).build()
+    
+    # Create conversation handler
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('start', start)],
+        states={
+            CLIENT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, client_name_handler)],
+            SERVICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, service_handler)],
+            PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, price_handler)],
+            QUANTITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, quantity_handler)],
+            ADD_MORE: [CallbackQueryHandler(add_more_handler, pattern="^(add_more|generate)$")],
+            PAYMENT_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, payment_date_handler)],
+            PAYMENT_METHOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, payment_method_handler)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel)],
+    )
+    
+    application.add_handler(conv_handler)
+    application.add_handler(CommandHandler('help', help_command))
+    application.add_handler(CallbackQueryHandler(new_invoice_callback, pattern="^new_invoice$"))
+    
+    # Set webhook if URL is available
+    if RENDER_URL:
+        webhook_url = f"{RENDER_URL}/webhook"
+        await application.bot.set_webhook(url=webhook_url)
+        logger.info(f"Webhook set to {webhook_url}")
         
-        # Create conversation handler
-        conv_handler = ConversationHandler(
-            entry_points=[CommandHandler('start', start)],
-            states={
-                CLIENT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, client_name_handler)],
-                SERVICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, service_handler)],
-                PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, price_handler)],
-                QUANTITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, quantity_handler)],
-                ADD_MORE: [CallbackQueryHandler(add_more_handler, pattern="^(add_more|generate)$")],
-                PAYMENT_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, payment_date_handler)],
-                PAYMENT_METHOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, payment_method_handler)],
-            },
-            fallbacks=[CommandHandler('cancel', cancel)],
-        )
+        # Start webhook mode (no polling)
+        await application.initialize()
+        await application.start()
         
-        application.add_handler(conv_handler)
-        application.add_handler(CommandHandler('help', help_command))
-        application.add_handler(CallbackQueryHandler(new_invoice_callback, pattern="^new_invoice$"))
-        
-        # Start the bot
-        logger.info("🤖 Bot is starting...")
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
-        
-    except Exception as e:
-        logger.error(f"Error starting bot: {e}")
-        sys.exit(1)
+        # Keep the application running
+        try:
+            while True:
+                await asyncio.sleep(3600)  # Sleep for an hour
+        except KeyboardInterrupt:
+            await application.stop()
+    else:
+        # Fallback to polling for local development
+        logger.info("Starting in polling mode")
+        await application.run_polling()
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
