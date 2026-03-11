@@ -135,7 +135,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data[user_id] = InvoiceData()
     
     welcome_message = (
-        f"🏢 *Welcome to {COMPANY_NAME} Bot!*\n\n"
+        f"🏢 Welcome to {COMPANY_NAME} Bot!\n\n"
         "Choose an option:"
     )
     
@@ -145,7 +145,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(welcome_message, reply_markup=reply_markup, parse_mode='Markdown')
+    await update.message.reply_text(welcome_message, reply_markup=reply_markup)
     return MAIN_MENU
 
 async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1008,16 +1008,11 @@ async def send_emails(update, context):
     os.unlink(file_path)
 
 async def main():
-    """Main function to run the bot with webhook"""
+    """Main function to run the bot"""
     global application
     
     # Get token from environment variable
     TOKEN = os.environ.get('BOT_TOKEN', "YOUR_BOT_TOKEN_HERE")
-    
-    # Get Render URL
-    RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL')
-    if not RENDER_URL:
-        logger.warning("RENDER_EXTERNAL_URL not set, webhook may not work")
     
     # Start HTTP server for health checks and webhooks
     await start_http_server()
@@ -1051,21 +1046,19 @@ async def main():
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler('help', help_command))
     application.add_handler(CallbackQueryHandler(new_invoice_callback, pattern="^new_invoice$"))
-    application.add_handler(CallbackQueryHandler(lead_finder_menu_handler, pattern="^(find_leads|send_emails|back_main)$"))
     
     # Initialize and start the application
     await application.initialize()
     await application.start()
     
-    # Set webhook if URL is available
-    if RENDER_URL:
-        webhook_url = f"{RENDER_URL}/webhook"
-        await application.bot.set_webhook(url=webhook_url)
-        logger.info(f"Webhook set to {webhook_url}")
+    # Check for webhook URL
+    WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
+    if WEBHOOK_URL:
+        await application.bot.set_webhook(url=WEBHOOK_URL)
+        logger.info(f"Webhook set to {WEBHOOK_URL}")
         
         # Keep the application running
         try:
-            # Keep the process alive
             while True:
                 await asyncio.sleep(3600)  # Sleep for an hour
         except KeyboardInterrupt:
