@@ -358,6 +358,8 @@ async def email_body_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     asyncio.create_task(send_emails(update, context))
     
     return ConversationHandler.END
+
+async def client_name_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle client name input"""
     user_id = update.effective_user.id
     if user_id not in user_data:
