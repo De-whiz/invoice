@@ -229,8 +229,8 @@ async def niche_location_handler(update: Update, context: ContextTypes.DEFAULT_T
         )
         return NICHE_LOCATION
     
-    niche = parts[0]
-    location = ' '.join(parts[1:])
+    niche = ' '.join(parts[:-1])
+    location = parts[-1]
     
     await update.message.reply_text(
         f"🔍 Searching for *{niche}* in *{location}*...\n\n"
